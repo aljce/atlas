@@ -1,6 +1,7 @@
 // Magic: The Gathering card enums for Amulet Titan deck simulation
 
 use bitflags::bitflags;
+use enum_map::Enum;
 
 // ============================================================================
 // CARD TYPE BITFLAGS
@@ -39,19 +40,19 @@ pub struct ManaValue {
 // MAIN CARD ENUM
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Card {
     Land(Land),
     Spell(Spell),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Spell {
     Permanent(Permanent),
     NonPermanent(NonPermanent),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Permanent {
     // Artifacts
     AmuletOfVigor,
@@ -66,25 +67,25 @@ pub enum Permanent {
     PrimevalTitan,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum NonPermanent {
     Sorcery(Sorcery),
     Instant(Instant),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Sorcery {
     Explore,
     GreenSunsZenith,
     Scapeshift,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Instant {
     SummonersPact,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Enum)]
 pub enum Land {
     BoseijuWhoEndures,
     CrumblingVestige,
@@ -191,7 +192,7 @@ impl HasManaValue for Permanent {
             // Creatures
             Permanent::AftermathAnalyst => ManaValue {
                 white: 0, blue: 0, black: 0, red: 0, green: 1,
-                colorless: 0, generic: 1, x: 0
+                colorless: 0, generic: 0, x: 0
             },
             Permanent::ArborealGrazer => ManaValue {
                 white: 0, blue: 0, black: 0, red: 0, green: 1,
@@ -199,7 +200,7 @@ impl HasManaValue for Permanent {
             },
             Permanent::CultivatorColossus => ManaValue {
                 white: 0, blue: 0, black: 0, red: 0, green: 3,
-                colorless: 0, generic: 4, x: 0
+                colorless: 0, generic: 1, x: 0
             },
             Permanent::PrimevalTitan => ManaValue {
                 white: 0, blue: 0, black: 0, red: 0, green: 2,
@@ -247,3 +248,4 @@ impl HasManaValue for Instant {
         }
     }
 }
+

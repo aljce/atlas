@@ -1,13 +1,15 @@
 // Game state module for Magic: The Gathering Amulet Titan simulation
 
-use crate::cards::{Card, Land, Spell, Permanent, CardType, card_type, ManaValue};
-use std::collections::HashMap;
+use crate::cards::{Card, Land, Spell, Permanent, CardType, card_type};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use enum_map::EnumMap;
 
 // ============================================================================
 // MAIN GAME STATE
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct GameState {
     pub life_total: i32,
     pub hand: Hand,
@@ -15,6 +17,7 @@ pub struct GameState {
     pub graveyard: Graveyard,
     pub mana_pool: ManaPool,
     pub library: Library,
+    pub stack: Stack,
 }
 
 // ============================================================================
@@ -76,56 +79,44 @@ pub struct ManaPool {
 
 
 // ============================================================================
+// STACK
+// ============================================================================
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stack {
+    pub spells: Vec<Spell>,
+}
+
+// ============================================================================
 // LIBRARY
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LibraryState {
-    Sorted(HashMap<Card, u8>),
-    Shuffled(Vec<Card>),
+pub struct SortedLibrary {
+    pub cards: EnumMap<Card, u8>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Library {
-    pub state: LibraryState,
+    pub cards: EnumMap<Card, u8>,
     pub size: usize,
+    pub rng: StdRng,
 }
 
 impl Library {
-    /// Creates a new shuffled library with the given cards
-    pub fn new(cards: Vec<Card>) -> Self {
+    /// Creates a new library with the given cards and RNG seed
+    pub fn new(cards: Vec<Card>, seed: u64) -> Self {
         let size = cards.len();
+        let mut card_counts = EnumMap::default();
+        for card in cards {
+            card_counts[card] += 1;
+        }
+        let rng = StdRng::seed_from_u64(seed);
         Library {
-            state: LibraryState::Shuffled(cards),
+            cards: card_counts,
             size,
+            rng,
         }
-    }
-
-    /// Draws the top card from the library
-    pub fn draw(&mut self) -> Option<Card> {
-        let card = match &mut self.state {
-            LibraryState::Shuffled(cards) => cards.pop(),
-            LibraryState::Sorted(card_map) => {
-                // For sorted, we need to pick a card and decrement its count
-                if let Some((&card, &count)) = card_map.iter().next() {
-                    let card = card.clone();
-                    if count > 1 {
-                        card_map.insert(card.clone(), count - 1);
-                    } else {
-                        card_map.remove(&card);
-                    }
-                    Some(card)
-                } else {
-                    None
-                }
-            }
-        };
-
-        if card.is_some() {
-            self.size = self.size.saturating_sub(1);
-        }
-
-        card
     }
 
     /// Returns the number of cards in the library
@@ -137,6 +128,43 @@ impl Library {
     pub fn is_empty(&self) -> bool {
         self.size == 0
     }
+
+    /// Returns a reference to the sorted library (cards are already sorted in EnumMap)
+    pub fn as_sorted(&self) -> SortedLibrary {
+        SortedLibrary {
+            cards: self.cards.clone(),
+        }
+    }
+
+    /// Draws a random card from the library, returns None if library is empty
+    pub fn draw_random_card(&mut self) -> Option<Card> {
+        use rand::Rng;
+
+        if self.size == 0 {
+            return None;
+        }
+
+        // Create a vector of available cards (cards with count > 0)
+        let mut available_cards = Vec::new();
+        for (card, &count) in &self.cards {
+            if count > 0 {
+                // Add each card type 'count' times to represent the probability
+                for _ in 0..count {
+                    available_cards.push(card);
+                }
+            }
+        }
+
+        // Pick a random card from the available cards
+        let random_index = self.rng.gen_range(0..available_cards.len());
+        let drawn_card = available_cards[random_index];
+
+        // Decrease the count for this card type
+        self.cards[drawn_card] -= 1;
+        self.size -= 1;
+
+        Some(drawn_card)
+    }
 }
 
 // ============================================================================
@@ -146,8 +174,8 @@ impl Library {
 impl Graveyard {
     /// Returns an iterator over the cards in the graveyard
     pub fn iter(&self) -> impl Iterator<Item = Card> + '_ {
-        let land_cards = self.lands.iter().map(|land| Card::Land(land.clone()));
-        let spell_cards = self.spells.iter().map(|spell| Card::Spell(spell.clone()));
+        let land_cards = self.lands.iter().map(|&land| Card::Land(land));
+        let spell_cards = self.spells.iter().map(|&spell| Card::Spell(spell));
 
         land_cards.chain(spell_cards)
     }

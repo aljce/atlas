@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 bitflags = "2.4"
+rand = "0.8"
+enum-map = "2.7"
