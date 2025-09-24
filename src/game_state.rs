@@ -4,6 +4,7 @@ use crate::cards::{Card, Land, Spell, Permanent, CardType, card_type};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use enum_map::EnumMap;
+use std::collections::HashMap;
 
 // ============================================================================
 // MAIN GAME STATE
@@ -11,20 +12,34 @@ use enum_map::EnumMap;
 
 #[derive(Debug, Clone)]
 pub struct GameState {
-    pub life_total: i32,
+    pub active_player: Player,
+    pub non_active_player: Option<Player>,
+    pub stack: Stack,
+    pub priority: PlayerId,
+    pub next_id: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayerId {
+    Active,
+    NonActive,
+}
+
+#[derive(Debug, Clone)]
+pub struct Player {
+    pub life_total: isize,
+    pub library: Library,
     pub hand: Hand,
     pub battlefield: Battlefield,
     pub graveyard: Graveyard,
     pub mana_pool: ManaPool,
-    pub library: Library,
-    pub stack: Stack,
 }
 
 // ============================================================================
 // GRAVEYARD
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Graveyard {
     pub spells: Vec<Spell>,
     pub lands: Vec<Land>,
@@ -35,7 +50,7 @@ pub struct Graveyard {
 // HAND
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Hand {
     pub lands: Vec<Land>,
     pub spells: Vec<Spell>,
@@ -45,28 +60,42 @@ pub struct Hand {
 // BATTLEFIELD
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Battlefield {
-    pub lands: Vec<Tapped<Land>>,
-    pub non_lands: Vec<Permanent>,
+    pub lands: HashMap<GameObjectId, GameObject<Land>>,
+    pub non_lands: HashMap<GameObjectId, GameObject<Permanent>>,
     pub land_plays: usize,
 }
 
-// ============================================================================
-// TAPPED WRAPPER
-// ============================================================================
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TapState {
+    Tapped,
+    Untapped,
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Tapped<A> {
+pub struct GameObject<A> {
     pub permanent: A,
-    pub is_tapped: bool,
+    pub tap_state: TapState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GameObjectId(usize);
+
+impl GameState {
+    /// Generates a new unique GameObjectId
+    pub fn next_game_object_id(&mut self) -> GameObjectId {
+        let id = GameObjectId(self.next_id);
+        self.next_id += 1;
+        id
+    }
 }
 
 // ============================================================================
 // MANA POOL
 // ============================================================================
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ManaPool {
     pub white: usize,
     pub blue: usize,
@@ -83,18 +112,38 @@ pub struct ManaPool {
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Trigger {
+    Enters(Card),
+    AmuletUntap(GameObjectId),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StackObjectId(usize);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Target {
+    Object(GameObjectId),
+    Spell(StackObjectId),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StackObject {
+    Spell(Spell),
+    Trigger(Trigger),
+    ActivatedAbility {
+        source: GameObjectId,
+        target: Option<Target>,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Stack {
-    pub spells: Vec<Spell>,
+    pub objects: Vec<StackObject>,
 }
 
 // ============================================================================
 // LIBRARY
 // ============================================================================
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct SortedLibrary {
-    pub cards: EnumMap<Card, u8>,
-}
 
 #[derive(Debug, Clone)]
 pub struct Library {
@@ -128,14 +177,6 @@ impl Library {
     pub fn is_empty(&self) -> bool {
         self.size == 0
     }
-
-    /// Returns a reference to the sorted library (cards are already sorted in EnumMap)
-    pub fn as_sorted(&self) -> SortedLibrary {
-        SortedLibrary {
-            cards: self.cards.clone(),
-        }
-    }
-
     /// Draws a random card from the library, returns None if library is empty
     pub fn draw_random_card(&mut self) -> Option<Card> {
         use rand::Rng;
@@ -147,11 +188,9 @@ impl Library {
         // Create a vector of available cards (cards with count > 0)
         let mut available_cards = Vec::new();
         for (card, &count) in &self.cards {
-            if count > 0 {
-                // Add each card type 'count' times to represent the probability
-                for _ in 0..count {
-                    available_cards.push(card);
-                }
+            // Add each card type 'count' times to represent the probability
+            for _ in 0..count {
+                available_cards.push(card);
             }
         }
 
@@ -164,6 +203,12 @@ impl Library {
         self.size -= 1;
 
         Some(drawn_card)
+    }
+
+    /// Adds a card to the library
+    pub fn add_card(&mut self, card: Card) {
+        self.cards[card] += 1;
+        self.size += 1;
     }
 }
 
